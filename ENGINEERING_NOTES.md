@@ -123,8 +123,13 @@ Gotchas already hit, so nobody re-hits them:
 | `APP` | Streamlit in Snowflake — care coordinator / UM nurse console |
 
 Stages: `DOCS.POLICY_DOCS`, `DOCS.CLINICAL_DOCS` (both SSE-encrypted, directory enabled).
-Roles: `VERITY_CLINICAL_REVIEWER` (sees PHI) vs `VERITY_ANALYST` (PHI masked) — exists to
-demo dynamic masking live.
+Roles: `VERITY_CLINICAL_REVIEWER` (sees PHI) vs `VERITY_ANALYST` (PHI masked).
+
+> **Caution:** the roles in `00_setup.sql` were not created for a long time. That file's
+> execution was blocked early on, the DDL was re-run inline, and only the database,
+> schemas and stages made it across — the role statements were silently skipped. It only
+> surfaced weeks later when granting a teammate access failed with "role does not exist".
+> If a file is ever partially re-run by hand, verify the tail of it, not just the head.
 
 ---
 
