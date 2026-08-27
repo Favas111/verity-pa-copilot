@@ -39,7 +39,7 @@ TEMPLATE = os.path.expanduser(
 # ---------------------------------------------------------------------
 # Team details — REPLACE BEFORE SUBMITTING
 # ---------------------------------------------------------------------
-TEAM_NAME = "Coyot"
+TEAM_NAME = "Team Alpha"
 TEAM_LEADER = "Priyanka Karmakar"
 TEAM_SIZE = "2 — Priyanka Karmakar (lead), Mohammed Favas"
 PROBLEM_STATEMENT = "Patient & Member 360 / Clinical-Regulatory Copilot (HCLS)"
