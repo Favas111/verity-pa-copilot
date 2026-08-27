@@ -3,7 +3,7 @@
 -- Policy registry + Criteria Ledger (the machine-checkable criteria tree)
 --
 -- Run with:  snow sql -c hackathon -q "<contents>"
--- (snow sql -f is blocked in the agent harness; see CLAUDE.md)
+-- (snow sql -f is unreliable here; run via scripts/run_sql.py)
 -- =====================================================================
 
 USE DATABASE VERITY;

@@ -134,7 +134,7 @@ reproducible and individually cited.
 | `.cortex/skills/` | Custom CoCo CLI skills |
 | `docs/coco-runbook.md` | How the CoCo set-pieces were run, and their scored results |
 | `docs/verity-prototype.pptx` | Prototype submission deck |
-| `CLAUDE.md` | Full engineering notes — every gotcha hit, and why each decision was made |
+| `ENGINEERING_NOTES.md` | Full engineering notes — every gotcha hit, and why each decision was made |
 
 ---
 
@@ -150,7 +150,7 @@ python3 scripts/run_sql.py sql/00_setup.sql
 # 2. Policy: render the PDF, stage it, parse it, load the criteria tree
 python3 data/policies/build_policies.py data/policies
 python3 scripts/run_sql.py sql/01_policy_model.sql
-python3 data/policies/load_criteria.py /tmp/verity     # then PUT + COPY, see CLAUDE.md
+python3 data/policies/load_criteria.py /tmp/verity     # then PUT + COPY, see ENGINEERING_NOTES.md
 
 # 3. Member 360 — bulk population, then the golden cohort (order matters:
 #    step 3 uses CREATE OR REPLACE and would wipe golden rows inserted first)
@@ -209,7 +209,9 @@ a passage summarising *both* intolerances could satisfy §4.2 — a realisticall
 documenting each separately would have returned `NOT_MET` and wrongly routed an approvable
 member to a clinician. The decomposition was adopted and the answer key corrected.
 
-CoCo also drove schema iteration and debugged the Streamlit console in-product.
+CoCo's contribution here is narrow and specific: it read the parsed policy and produced
+the criteria tree, blind, and its reading was better than ours. That is the whole claim —
+the rest of the build is ordinary SQL and Python in this repo.
 
 ---
 

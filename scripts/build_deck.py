@@ -39,9 +39,9 @@ TEMPLATE = os.path.expanduser(
 # ---------------------------------------------------------------------
 # Team details — REPLACE BEFORE SUBMITTING
 # ---------------------------------------------------------------------
-TEAM_NAME = "[TEAM NAME]"
-TEAM_LEADER = "[TEAM LEADER NAME]"
-TEAM_SIZE = "[TEAM SIZE]"
+TEAM_NAME = "Coyot"
+TEAM_LEADER = "Priyanka Karmakar"
+TEAM_SIZE = "2 — Priyanka Karmakar (lead), Mohammed Favas"
 PROBLEM_STATEMENT = "Patient & Member 360 / Clinical-Regulatory Copilot (HCLS)"
 
 # ---------------------------------------------------------------------
@@ -266,11 +266,15 @@ def slide_problem(prs, bg):
          space_after=0)
 
     y3 = y2 + 1.06
+    # Figures verified against CMS's own fact sheet for CMS-0057-F: 72 hours
+    # expedited, 7 calendar days standard, a specific denial reason required,
+    # in force for impacted payers from 1 January 2026.
     tf = textbox(slide, LEFT, y3, W, 0.50)
     rich(tf, [("Domain context.  ", {"bold": True, "color": NAVY, "size": 9}),
-              ("CMS-0057-F requires payers to return prior-authorization decisions "
-               "within fixed windows and to state a specific reason for each. "
-               "\"The model decided\" is not a reason. Every criterion must be "
+              ("Since January 2026, CMS-0057-F requires impacted payers to return "
+               "prior-authorization decisions within 72 hours (expedited) or 7 calendar "
+               "days (standard), and to give a specific reason for every denial. "
+               "\"The model decided\" is not a reason. Each criterion must be "
                "individually defensible and traceable to a source.",
                {"color": BODY, "size": 9})],
          first=True, space_after=0)
@@ -421,9 +425,9 @@ def slide_architecture(prs, bg):
     tf = textbox(slide, LEFT, yb + lane_h + 0.10, W, 0.30)
     rich(tf, [("CoCo CLI skills.  ", {"bold": True, "color": NAVY, "size": 8.5}),
               ("policy-criteria-extractor", {"font": MONO, "color": BRAND, "size": 8.5}),
-              (" converts parsed policy prose into the criteria tree, and is scored "
-               "blind against a held-out answer key. CoCo also drove schema "
-               "iteration and debugged the console in-product.",
+              (" converts parsed policy prose into the criteria tree, scored blind "
+               "against a held-out answer key. It recovered every node independently "
+               "and added two the hand-authored key was missing.",
                {"color": BODY, "size": 8.5})],
          first=True, space_after=0)
 

@@ -4,7 +4,7 @@
 --
 -- Every column here exists to serve a specific criterion in the Criteria
 -- Ledger. Schema was derived FROM the criteria tree, not the other way
--- round — see CLAUDE.md. Columns carrying that weight are commented with
+-- round — see ENGINEERING_NOTES.md. Columns carrying that weight are commented with
 -- the section reference they serve.
 --
 -- ALL DATA IS SYNTHETIC. Fictional payer (Meridian Health Plan),
