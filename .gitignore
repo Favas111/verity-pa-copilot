@@ -1,0 +1,30 @@
+# Snowflake CLI build output
+output/
+
+# Node (only used for a pptxgenjs experiment; the deck is built with python-pptx)
+node_modules/
+package-lock.json
+package.json
+
+# Hackathon template background art, extracted from the organisers' .pptx at
+# build time by scripts/build_deck.py. Not redistributed here — the built deck
+# in docs/ is the artefact.
+docs/_bg/
+
+# Local renders / scratch
+*.pdf
+deck-*.jpg
+*.ndjson
+
+# ...but the synthetic policy PDF is a source artefact: it is what
+# AI_PARSE_DOCUMENT consumes, and it shows reviewers the document the
+# criteria tree was derived from.
+!data/policies/*.pdf
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store

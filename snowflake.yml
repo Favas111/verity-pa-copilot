@@ -1,0 +1,19 @@
+# NOTE: `snow streamlit deploy` is BROKEN on this account — apps deployed to
+# versioned storage fail at load with a Python Interpreter Error. Use
+# ./scripts/deploy_app.sh instead, which uses ROOT_LOCATION. This file is
+# kept only to document the entity.
+definition_version: 2
+
+entities:
+  verity_console:
+    type: streamlit
+    identifier:
+      name: VERITY_CONSOLE
+      schema: APP
+      database: VERITY
+    stage: VERITY.APP.STREAMLIT_STAGE
+    query_warehouse: COMPUTE_WH
+    main_file: app/streamlit_app.py
+    title: "Verity — PA Evidence Console"
+    artifacts:
+      - app/streamlit_app.py
