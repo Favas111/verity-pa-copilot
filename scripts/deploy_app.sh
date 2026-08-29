@@ -34,6 +34,11 @@ CREATE OR REPLACE STREAMLIT VERITY.APP.VERITY_CONSOLE
 " | grep -E "UPLOADED|successfully|Error" || true
 
 echo
+# CREATE OR REPLACE mints a new object identity, which silently orphans any
+# access grant made to a teammate's role on the old one. Re-share every time.
+snow streamlit share VERITY.APP.VERITY_CONSOLE VERITY_CLINICAL_REVIEWER -c "$CONN" \
+    | grep -E "successfully|Error" || true
+
 echo "Open it from Snowsight: Projects -> Streamlit -> VERITY_CONSOLE"
 echo "or run: snow streamlit get-url verity_console -c $CONN"
 echo "A real page load is the only verification that counts — EXECUTE STREAMLIT passes on builds that fail in the browser."
