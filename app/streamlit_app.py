@@ -14,8 +14,19 @@ Every verdict shown here is read back from AUDIT.DETERMINATION_NODE. The
 app renders a determination; it never computes one.
 """
 
+import re
+import uuid
+
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
+
+# Every real member id is "M" + 8 digits (see CORE.MEMBER / build_golden.py).
+# The search box is the one place free-typed text reaches SQL, and CALL
+# statements through Snowpark's params=[...] binding returned a malformed
+# result here (DETERMINATION_ID missing from the row) for reasons not worth
+# chasing under time pressure — so this build validates against an
+# allowlist and interpolates, rather than trusting parameter binding.
+MEMBER_ID_RE = re.compile(r"^M[0-9]{8}$")
 
 st.set_page_config(page_title="Verity — PA Evidence Console", layout="wide")
 session = get_active_session()
@@ -105,50 +116,6 @@ def load_all() -> dict:
               ON l.determination_id = n.determination_id
             ORDER BY n.sort_order
         """),
-        "member": q("""
-            SELECT m.member_id, m.date_of_birth, m.sex, m.state,
-                   FLOOR(DATEDIFF(day, m.date_of_birth, CURRENT_DATE())/365.25) AS age,
-                   e.plan_id, e.lob, e.coverage_start
-            FROM VERITY.CORE.MEMBER m
-            LEFT JOIN VERITY.CORE.ELIGIBILITY e ON e.member_id = m.member_id
-            WHERE m.is_golden
-        """),
-        "links": q("""
-            SELECT member_id, prior_member_id, prior_carrier,
-                   coverage_start, coverage_end
-            FROM VERITY.CORE.MEMBER_LINK
-        """),
-        "labs": q("""
-            SELECT l.member_id, l.collected_date, l.value_num
-            FROM VERITY.CORE.LAB_RESULT l
-            JOIN VERITY.CORE.MEMBER m ON m.member_id = l.member_id AND m.is_golden
-            WHERE l.loinc = '4548-4'
-            ORDER BY l.collected_date
-        """),
-        "trials": q("""
-            SELECT t.member_id, t.drug_class, t.trial_start, t.trial_end,
-                   t.trial_months, t.fill_count,
-                   ARRAY_TO_STRING(t.evidence_sources, ', ') AS source
-            FROM VERITY.CORE.V_DRUG_TRIAL t
-            JOIN VERITY.CORE.MEMBER m ON m.member_id = t.member_id AND m.is_golden
-            ORDER BY t.drug_class, t.trial_start
-        """),
-        "dx": q("""
-            SELECT c.member_id, c.service_date, d.icd10,
-                   p.provider_name, p.network_status
-            FROM VERITY.CORE.CLAIM c
-            JOIN VERITY.CORE.MEMBER m ON m.member_id = c.member_id AND m.is_golden
-            JOIN VERITY.CORE.CLAIM_DIAGNOSIS d ON d.claim_id = c.claim_id
-            LEFT JOIN VERITY.CORE.PROVIDER p ON p.provider_id = c.provider_id
-            ORDER BY c.service_date DESC
-        """),
-        "notes": q("""
-            SELECT n.member_id, n.note_date, n.note_type,
-                   n.source_system, n.network_status
-            FROM VERITY.DOCS.CLINICAL_NOTE n
-            JOIN VERITY.CORE.MEMBER m ON m.member_id = n.member_id AND m.is_golden
-            ORDER BY n.note_date DESC
-        """),
         # Sort numerically by major then minor part. Zero-padding the whole
         # string sorts '0002.1' after '000008', which put every subsection
         # below every top-level section (§2.1 appearing after §8).
@@ -162,6 +129,198 @@ def load_all() -> dict:
 
 
 DATA = load_all()
+
+# The one policy this build supports. A live "look up any member" review has
+# nothing else to adjudicate against, so this is what gets requested on
+# their behalf. Update if a second policy is ever added.
+DEFAULT_POLICY_ID = "MHP-PA-0142"
+DEFAULT_NDC = "99999-0401-02"
+DEFAULT_DRUG = "Semaglutide 0.5 MG/DOSE"
+
+
+# ---------------------------------------------------------------------
+# Per-member data — fetched live and cached BY MEMBER, rather than bulk-
+# loaded for the three demo members up front. This is what lets "look up
+# any member" work at all: the other ~5,000 members were never bulk-loaded
+# into DATA, so a per-member fetch is the only way to see their chart.
+# Cached per member_id, so re-viewing someone costs nothing.
+# ---------------------------------------------------------------------
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_member_snapshot(member_id: str) -> dict:
+    # member_id only ever reaches here already validated against
+    # MEMBER_ID_RE (see run_live_adjudication) or sourced from our own
+    # queue dataframe, but escape defensively regardless of provenance.
+    mid = member_id.replace("'", "''")
+
+    def q(sql: str):
+        return session.sql(sql).to_pandas()
+
+    return {
+        "profile": q(f"""
+            SELECT m.member_id, m.first_name, m.last_name, m.date_of_birth,
+                   m.sex, m.state,
+                   FLOOR(DATEDIFF(day, m.date_of_birth, CURRENT_DATE())/365.25) AS age,
+                   e.plan_id, e.lob, e.coverage_start
+            FROM VERITY.CORE.MEMBER m
+            LEFT JOIN VERITY.CORE.ELIGIBILITY e ON e.member_id = m.member_id
+            WHERE m.member_id = '{mid}'
+            LIMIT 1
+        """),
+        "links": q(f"""
+            SELECT member_id, prior_member_id, prior_carrier,
+                   coverage_start, coverage_end
+            FROM VERITY.CORE.MEMBER_LINK WHERE member_id = '{mid}'
+        """),
+        "labs": q(f"""
+            SELECT collected_date, value_num
+            FROM VERITY.CORE.LAB_RESULT
+            WHERE member_id = '{mid}' AND loinc = '4548-4'
+            ORDER BY collected_date
+        """),
+        "trials": q(f"""
+            SELECT drug_class, trial_start, trial_end, trial_months, fill_count,
+                   ARRAY_TO_STRING(evidence_sources, ', ') AS source
+            FROM VERITY.CORE.V_DRUG_TRIAL
+            WHERE member_id = '{mid}'
+            ORDER BY drug_class, trial_start
+        """),
+        "dx": q(f"""
+            SELECT c.service_date, d.icd10, p.provider_name, p.network_status
+            FROM VERITY.CORE.CLAIM c
+            JOIN VERITY.CORE.CLAIM_DIAGNOSIS d ON d.claim_id = c.claim_id
+            LEFT JOIN VERITY.CORE.PROVIDER p ON p.provider_id = c.provider_id
+            WHERE c.member_id = '{mid}'
+            ORDER BY c.service_date DESC
+            LIMIT 12
+        """),
+        "notes": q(f"""
+            SELECT note_date, note_type, source_system, network_status
+            FROM VERITY.DOCS.CLINICAL_NOTE
+            WHERE member_id = '{mid}'
+            ORDER BY note_date DESC
+        """),
+    }
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_determination(determination_id: str) -> dict:
+    """Fetch one determination + its node trail, not from the bulk DATA
+    blob. Used for determinations created by a live search — they will
+    not appear in the app-startup snapshot DATA was loaded from.
+
+    determination_id is always a UUID this app minted itself via
+    ADJUDICATE, never free-typed input, but it is still escaped below —
+    cheap insurance."""
+    did = determination_id.replace("'", "''")
+
+    det = session.sql(f"""
+        SELECT determination_id, pa_id, member_id, outcome, root_verdict,
+               blocking_reasons, policy_id, policy_version, decided_at
+        FROM VERITY.AUDIT.DETERMINATION WHERE determination_id = '{did}'
+    """).to_pandas()
+    nodes = session.sql(f"""
+        SELECT determination_id, node_id, parent_id, node_type, combinator,
+               section_ref, label, evidence_type, verdict, citation,
+               evidence, depth, sort_order
+        FROM VERITY.AUDIT.DETERMINATION_NODE
+        WHERE determination_id = '{did}'
+        ORDER BY sort_order
+    """).to_pandas()
+    return {"det": det, "nodes": nodes}
+
+
+def run_live_adjudication(raw_member_id: str) -> dict:
+    """
+    Review a member who is not already in the demo queue.
+
+    If this member already has a determination against the default policy,
+    reuse it rather than paying for a fresh 40-second adjudication — a
+    reviewer re-checking the same person a minute later should not
+    re-trigger retrieval and LLM calls, and would not expect the answer
+    to change on an unchanged record.
+
+    Returns {"ok": True, "pa_id": ..., ...} or {"ok": False, "error": ...}.
+    Never raises: search-box input is untrusted, and a stack trace on
+    screen is a bad first impression for a live demo.
+
+    NOTE on SQL construction: this validates member_id against a strict
+    allowlist (MEMBER_ID_RE) and then interpolates, rather than using
+    Snowpark's params=[...] binding. Binding a CALL statement's argument
+    that way returned a result missing DETERMINATION_ID in this runtime —
+    not worth chasing under time pressure, and the allowlist closes the
+    injection risk that binding exists to prevent.
+    """
+    member_id = (raw_member_id or "").strip().upper()
+    if not MEMBER_ID_RE.match(member_id):
+        return {"ok": False, "error": "Member ids look like M followed by 8 digits."}
+
+    found = session.sql(
+        f"SELECT first_name, last_name FROM VERITY.CORE.MEMBER "
+        f"WHERE member_id = '{member_id}'"
+    ).to_pandas()
+    if found.empty:
+        return {"ok": False, "error": f"No member with id {member_id}."}
+    member_name = f"{found.iloc[0].FIRST_NAME} {found.iloc[0].LAST_NAME}"
+
+    existing = session.sql(f"""
+        SELECT d.determination_id, p.pa_id, p.requested_drug
+        FROM VERITY.CORE.PA_REQUEST p
+        JOIN VERITY.AUDIT.DETERMINATION d ON d.pa_id = p.pa_id
+        WHERE p.member_id = '{member_id}' AND p.policy_id = '{DEFAULT_POLICY_ID}'
+        ORDER BY d.decided_at DESC LIMIT 1
+    """).to_pandas()
+    if not existing.empty:
+        row = existing.iloc[0]
+        return {
+            "ok": True, "reused": True, "pa_id": row.PA_ID,
+            "member_id": member_id, "member_name": member_name,
+            "requested_drug": row.REQUESTED_DRUG,
+            "determination_id": row.DETERMINATION_ID,
+        }
+
+    pa_id = "PA-LIVE-" + uuid.uuid4().hex[:12].upper()
+    session.sql(f"""
+        INSERT INTO VERITY.CORE.PA_REQUEST
+            (pa_id, member_id, policy_id, requested_ndc, requested_drug,
+             request_date, date_of_service, status)
+        SELECT '{pa_id}', '{member_id}', '{DEFAULT_POLICY_ID}', '{DEFAULT_NDC}',
+               '{DEFAULT_DRUG}', CURRENT_DATE(), CURRENT_DATE(), 'PENDING'
+    """).collect()
+
+    # Fire the adjudication, then read the result back from the audit table
+    # rather than from the CALL's own return value.
+    #
+    # ADJUDICATE returns TABLE(outcome, root_verdict, blocking_reasons,
+    # determination_id) and that works fine from the CLI, but in this
+    # Snowpark runtime the returned frame does not carry DETERMINATION_ID —
+    # neither with params=[...] binding nor with plain interpolation. Since
+    # we minted pa_id ourselves, AUDIT.DETERMINATION is an authoritative and
+    # completely unambiguous place to look the result up, so the procedure's
+    # return shape stops mattering.
+    session.sql(f"CALL VERITY.POLICY.ADJUDICATE('{pa_id}')").collect()
+
+    written = session.sql(f"""
+        SELECT determination_id
+        FROM VERITY.AUDIT.DETERMINATION
+        WHERE pa_id = '{pa_id}'
+        ORDER BY decided_at DESC
+        LIMIT 1
+    """).to_pandas()
+    if written.empty:
+        # Adjudication did not persist anything — drop the orphan request so
+        # a failed run does not leave a phantom entry in the review queue.
+        session.sql(
+            f"DELETE FROM VERITY.CORE.PA_REQUEST WHERE pa_id = '{pa_id}'"
+        ).collect()
+        return {"ok": False,
+                "error": "Adjudication ran but wrote no determination."}
+    r = written.iloc[0]
+    return {
+        "ok": True, "reused": False, "pa_id": pa_id,
+        "member_id": member_id, "member_name": member_name,
+        "requested_drug": DEFAULT_DRUG,
+        "determination_id": r.DETERMINATION_ID,
+    }
 
 
 def chip(verdict: str) -> str:
@@ -183,7 +342,14 @@ def as_int(v, default: int = 0) -> int:
 
 
 # =====================================================================
-# Queue
+# Queue + live lookup
+#
+# Only three members arrive with a request already sitting in the queue —
+# those are the ones with a hand-written clinical story to find. Everyone
+# else in the 5,000-member population can still be reviewed: typing their
+# id below runs a REAL adjudication against them, live, right now. It is
+# the same ADJUDICATE procedure behind both paths; the three queue cases
+# just have their result pre-computed so the demo doesn't wait on them.
 # =====================================================================
 queue = DATA["queue"]
 
@@ -194,17 +360,59 @@ labels = {
     r.PA_ID: f"{r.MEMBER_NAME} — {r.REQUESTED_DRUG.split()[0]}"
     for r in queue.itertuples()
 }
-pa_id = st.sidebar.radio(
-    "Select a request", list(labels), format_func=lambda k: labels[k], label_visibility="collapsed"
+queue_choice = st.sidebar.radio(
+    "Select a request", list(labels), format_func=lambda k: labels[k],
+    label_visibility="collapsed", key="queue_choice",
 )
-row = queue[queue.PA_ID == pa_id].iloc[0]
+
+st.sidebar.divider()
+st.sidebar.markdown("### Look up any member")
+st.sidebar.caption(
+    f"Runs a fresh review against policy {DEFAULT_POLICY_ID}. "
+    "Takes about 40 seconds for a member with no case on file yet."
+)
+lookup_id = st.sidebar.text_input(
+    "Member id", placeholder="e.g. M00001234", label_visibility="collapsed"
+)
+if st.sidebar.button("Run review", use_container_width=True):
+    with st.sidebar:
+        with st.spinner("Reading records, searching notes, applying policy…"):
+            result = run_live_adjudication(lookup_id)
+    if result["ok"]:
+        st.session_state["live_result"] = result
+        st.session_state["active_source"] = "live"
+    else:
+        st.sidebar.error(result["error"])
+
+# Picking a queue case switches back out of "live" mode.
+if queue_choice != st.session_state.get("last_queue_choice"):
+    st.session_state["active_source"] = "queue"
+    st.session_state["last_queue_choice"] = queue_choice
+
+active_source = st.session_state.get("active_source", "queue")
+
+if active_source == "live" and "live_result" in st.session_state:
+    live = st.session_state["live_result"]
+    pa_id = live["pa_id"]
+    member_id = live["member_id"]
+    member_name = live["member_name"]
+    requested_drug = live["requested_drug"]
+    determination_id = live["determination_id"]
+    if live.get("reused"):
+        st.sidebar.caption("Already reviewed earlier this session — showing that result.")
+else:
+    pa_id = queue_choice
+    row = queue[queue.PA_ID == pa_id].iloc[0]
+    member_id = row.MEMBER_ID
+    member_name = row.MEMBER_NAME
+    requested_drug = row.REQUESTED_DRUG
+    determination_id = None  # resolved from DATA["det"] below
 
 st.sidebar.divider()
 st.sidebar.markdown(
     f'<div class="kv"><b>Request</b><br><span class="cite">{pa_id}</span></div>'
-    f'<div class="kv"><b>Member</b><br><span class="cite">{row.MEMBER_ID}</span></div>'
-    f'<div class="kv"><b>Drug</b><br>{row.REQUESTED_DRUG}</div>'
-    f'<div class="kv"><b>Date of service</b><br>{row.DATE_OF_SERVICE}</div>',
+    f'<div class="kv"><b>Member</b><br><span class="cite">{member_id}</span></div>'
+    f'<div class="kv"><b>Drug</b><br>{requested_drug}</div>',
     unsafe_allow_html=True,
 )
 st.sidebar.divider()
@@ -214,12 +422,17 @@ st.sidebar.caption(
 )
 
 # =====================================================================
-# Determination
+# Determination — from the bulk snapshot for a queue case, or fetched
+# live (and cached by determination_id) for a searched-up member.
 # =====================================================================
-det = DATA["det"][DATA["det"].PA_ID == pa_id]
+if determination_id is not None:
+    live_data = fetch_determination(determination_id)
+    det, nodes_full = live_data["det"], live_data["nodes"]
+else:
+    det = DATA["det"][DATA["det"].PA_ID == pa_id]
 
-st.markdown(f"## {row.MEMBER_NAME}")
-st.caption(f"{row.REQUESTED_DRUG} · policy {row.POLICY_ID}")
+st.markdown(f"## {member_name}")
+st.caption(f"{requested_drug} · policy {DEFAULT_POLICY_ID}")
 
 if det.empty:
     st.warning("No determination on file for this request yet.")
@@ -246,7 +459,10 @@ st.caption(
     f"in force on the date of service · decided {str(d.DECIDED_AT)[:16]}"
 )
 
-nodes = DATA["nodes"][DATA["nodes"].DETERMINATION_ID == d.DETERMINATION_ID]
+if determination_id is not None:
+    nodes = nodes_full  # already scoped to this one determination
+else:
+    nodes = DATA["nodes"][DATA["nodes"].DETERMINATION_ID == d.DETERMINATION_ID]
 
 tab_trail, tab_360, tab_policy = st.tabs(
     ["Criteria trail", "Member 360", "Policy source"]
@@ -287,24 +503,30 @@ with tab_trail:
                 st.code(n.EVIDENCE, language=None)
 
 # ---------------------------------------------------------------------
-# Member 360
+# Member 360 — fetched live for whichever member is currently active
+# (queue case or a live-searched one). Cached per member_id, so this
+# costs a real query only the first time each member is opened.
 # ---------------------------------------------------------------------
 with tab_360:
+    snap = fetch_member_snapshot(member_id)
     c1, c2 = st.columns([1, 1.35])
 
     with c1:
         st.markdown("#### Member")
-        prof = DATA["member"][DATA["member"].MEMBER_ID == row.MEMBER_ID].iloc[0]
-        st.markdown(
-            f'<div class="kv"><b>Age</b> {prof.AGE} · {prof.SEX} · {prof.STATE}</div>'
-            f'<div class="kv"><b>Plan</b> {prof.PLAN_ID} ({prof.LOB})</div>'
-            f'<div class="kv"><b>Covered since</b> {prof.COVERAGE_START}</div>',
-            unsafe_allow_html=True,
-        )
+        if snap["profile"].empty:
+            st.caption("No member profile on file.")
+        else:
+            prof = snap["profile"].iloc[0]
+            st.markdown(
+                f'<div class="kv"><b>Age</b> {prof.AGE} · {prof.SEX} · {prof.STATE}</div>'
+                f'<div class="kv"><b>Plan</b> {prof.PLAN_ID} ({prof.LOB})</div>'
+                f'<div class="kv"><b>Covered since</b> {prof.COVERAGE_START}</div>',
+                unsafe_allow_html=True,
+            )
 
         # Prior coverage is what makes step therapy discoverable at all —
         # surface it rather than burying it in a join.
-        links = DATA["links"][DATA["links"].MEMBER_ID == row.MEMBER_ID]
+        links = snap["links"]
         if not links.empty:
             st.markdown("#### Prior coverage")
             st.caption(
@@ -320,7 +542,7 @@ with tab_360:
                 )
 
         st.markdown("#### HbA1c")
-        labs = DATA["labs"][DATA["labs"].MEMBER_ID == row.MEMBER_ID]
+        labs = snap["labs"]
         if labs.empty:
             st.caption("No HbA1c results on file.")
         else:
@@ -335,8 +557,7 @@ with tab_360:
         st.markdown("#### Therapy history")
         st.caption("Continuous runs derived by fill-to-fill gap analysis, across all "
                    "member identities.")
-        trials = DATA["trials"][DATA["trials"].MEMBER_ID == row.MEMBER_ID].drop(
-            columns=["MEMBER_ID"])
+        trials = snap["trials"]
         if trials.empty:
             st.caption("No pharmacy claims on file.")
         else:
@@ -345,14 +566,22 @@ with tab_360:
             st.dataframe(trials.set_index("DRUG_CLASS"), use_container_width=True)
 
         st.markdown("#### Recent diagnoses")
-        dx = DATA["dx"][DATA["dx"].MEMBER_ID == row.MEMBER_ID].drop(
-            columns=["MEMBER_ID"]).head(12)
-        st.dataframe(dx.set_index("SERVICE_DATE"), use_container_width=True)
+        dx = snap["dx"]
+        if dx.empty:
+            st.caption("No claims on file.")
+        else:
+            st.dataframe(dx.set_index("SERVICE_DATE"), use_container_width=True)
 
         st.markdown("#### Clinical notes")
-        notes = DATA["notes"][DATA["notes"].MEMBER_ID == row.MEMBER_ID].drop(
-            columns=["MEMBER_ID"])
-        st.dataframe(notes.set_index("NOTE_DATE"), use_container_width=True)
+        notes = snap["notes"]
+        if notes.empty:
+            st.caption(
+                "No clinical notes on file — this member has only structured "
+                "records, so any narrative criterion below will read NO EVIDENCE "
+                "rather than MET."
+            )
+        else:
+            st.dataframe(notes.set_index("NOTE_DATE"), use_container_width=True)
 
 # ---------------------------------------------------------------------
 # Policy source

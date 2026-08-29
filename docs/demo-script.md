@@ -87,7 +87,31 @@ warehouse is warm. A cold start takes ~10 seconds and will look broken on camera
 
 ---
 
-## 2:15 – 2:45 · The guardrail, proven live
+## 2:05 – 2:25 · It runs on anyone, not just the three (optional)
+
+*Sidebar → "Look up any member" → type `M00003612` → Run review*
+
+> "Those three cases are pre-loaded so we don't wait on camera. But this runs against the
+> whole population — five thousand members. Let me review someone at random."
+
+*Wait for the spinner. ~40 seconds — talk over it.*
+
+> "It's reading her claims, pulling her lab history, searching her notes, and applying all
+> twenty-one criteria right now."
+
+*Result appears: Ashley Dawson, routed to clinician.*
+
+> "Routed for review. And look at the exclusions — they say NO EVIDENCE, not 'passed'.
+> This member has no clinical notes on file, so the system says *I can't verify this*
+> rather than assuming she's clear. That distinction matters when the thing you can't
+> verify is a contraindication."
+
+**Do not skip that last line.** A screen full of "NO EVIDENCE" looks like a broken app
+unless you explain that it is the system refusing to guess.
+
+---
+
+## 2:25 – 2:45 · The guardrail, proven live
 
 *Screen: Snowsight → AI & ML → Agents → VERITY_AGENT → Preview tab*
 
