@@ -441,7 +441,7 @@ def slide_hero(prs, bg):
 
     cw = (W - 0.22) / 2
 
-    s, tf = box(slide, LEFT, y, cw, 1.30, fill=WHITE, line=RULE)
+    s, tf = box(slide, LEFT, y, cw, 1.16, fill=WHITE, line=RULE)
     para(tf, "CONVENTIONAL QUERY", size=7.5, bold=True, color=MUTED, first=True,
          space_after=4)
     para(tf, "0 fills", size=22, bold=True, color=STOP, space_after=3)
@@ -450,7 +450,7 @@ def slide_hero(prs, bg):
     para(tf, "WHERE member_id = 'M09000001'", size=7, color=MUTED, font=MONO,
          space_after=0)
 
-    s, tf = box(slide, LEFT + cw + 0.22, y, cw, 1.30, fill=WHITE, line=BRAND,
+    s, tf = box(slide, LEFT + cw + 0.22, y, cw, 1.16, fill=WHITE, line=BRAND,
                 line_w=1.25)
     para(tf, "VERITY — IDENTITY-LINKED", size=7.5, bold=True, color=BRAND,
          first=True, space_after=4)
@@ -460,8 +460,8 @@ def slide_hero(prs, bg):
     para(tf, "source: Northstar Mutual Health", size=7, color=MUTED, font=MONO,
          space_after=0)
 
-    y2 = y + 1.44
-    s, tf = box(slide, LEFT, y2, W, 0.56, fill=WASH, line=None)
+    y2 = y + 1.28
+    s, tf = box(slide, LEFT, y2, W, 0.52, fill=WASH, line=None)
     rich(tf, [("This is the policy applied correctly, not a loophole.  ",
                {"bold": True, "color": NAVY, "size": 9}),
               ("§2.3 states that a trial completed under a prior member identifier "
@@ -470,12 +470,12 @@ def slide_hero(prs, bg):
                {"color": BODY, "size": 9})],
          first=True, space_after=0)
 
-    y3 = y2 + 0.70
+    y3 = y2 + 0.62
     tf = textbox(slide, LEFT, y3, W, 0.22)
-    para(tf, "THE SAME REVIEW, THREE MEMBERS", size=7.5, bold=True, color=BRAND,
+    para(tf, "THREE CASES, THREE DIFFERENT PATHS", size=7.5, bold=True, color=BRAND,
          first=True, space_after=0)
 
-    y4 = y3 + 0.26
+    y4 = y3 + 0.23
     rows = [
         ("Elena Vasquez", "APPROVE", MET, MET_BG,
          "§4.1 rescued by prior-coverage linkage; §4.2 by an out-of-network note "
@@ -494,7 +494,18 @@ def slide_hero(prs, bg):
         chip(slide, LEFT + 1.32, yy, verdict, fg, bgc, w=0.74, h=0.19, size=7)
         tf = textbox(slide, LEFT + 2.16, yy + 0.01, W - 2.16, 0.34)
         para(tf, text, size=8, color=BODY, first=True, space_after=0)
-        yy += 0.42
+        yy += 0.35
+
+    # The three cases are pre-computed so the demo does not wait on them, but
+    # the console adjudicates any member on demand. Saying so on the slide
+    # pre-empts the obvious "does this only work for three people?" question.
+    s, tf = box(slide, LEFT, yy + 0.04, W, 0.30, fill=WHITE, line=BRAND, line_w=0.75)
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    rich(tf, [("Not just these three.  ", {"bold": True, "color": BRAND, "size": 8.5}),
+              ("Any of the 5,003 members can be reviewed on demand — the same 21 "
+               "criteria, adjudicated live in about 40 seconds.",
+               {"color": BODY, "size": 8.5})],
+         first=True, space_after=0)
 
 
 def slide_trust(prs, bg):
@@ -627,8 +638,10 @@ def slide_impact(prs, bg):
         ("Push upstream", "Share the criteria engine with providers so a request is "
                           "checked before it is submitted, removing the denial "
                           "rather than appealing it."),
-        ("Scales by policy", "Adding a policy is adding a PDF. Parsing, extraction "
-                             "and scoring already run unattended."),
+        ("Already population-scale", "Any of the 5,003 members is reviewable on "
+                                     "demand today. Adding a policy is adding a PDF — "
+                                     "parsing, extraction and scoring already run "
+                                     "unattended."),
     ]
     iw = (W - 2 * 0.14) / 3
     for i, (head, text) in enumerate(items):
